@@ -1,13 +1,14 @@
 ﻿using System.Collections.Generic;
 using System.Data.SqlClient;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NovelReadingApplication.Models;
 using NovelReadingApplication.Services.Implementation;
 using NovelReadingApplication.Services.Interfaces;
 
 [ApiController]
-[Route("[controller]")]
+[Route("api/novels")]
 public class NovelsController : ControllerBase
 {
     private INovelService novelService;
@@ -16,37 +17,60 @@ public class NovelsController : ControllerBase
     {
         this.novelService = novelService;
     }
-    [HttpPost]
-    public async Task<IActionResult> AddNovel([FromBody] NovelCreateRequest request)
+    [HttpGet("get-all")]
+    public async Task<IActionResult> Get()
     {
-        var novel = new Novel
+        var novels = await novelService.GetAllNovelsAsync();
+        return Ok(novels);
+    }
+    [HttpGet("search")]
+    public async Task<IActionResult> Search([FromQuery] string title = "", [FromQuery] string author = "")
+    {
+        var novels = await novelService.SearchNovelsAsync(title, author);
+        return Ok(novels);
+    }
+    [Authorize]
+    [HttpPost("add-novel")]
+    public async Task<IActionResult> CreateNovel([FromBody] NovelCreateRequest novelRequest)
+    {
+        if (!ModelState.IsValid)
         {
-            Title = request.Title,
-            Author = request.Author,
-            PublicationYear = request.PublicationYear,
-            SourceIds = request.SourceIds
-        };
-
-        var success = await novelService.AddNovelAsync(novel);
-        if (success)
-        {
-            return Ok("Novel added successfully.");
+            return BadRequest(ModelState);
         }
-        else
+
+        // Check if the category exists
+        bool categoryExists = await novelService.CategoryExistsAsync(novelRequest.CatId);
+        if (!categoryExists)
         {
-            return BadRequest("One or more sources do not exist.");
+            return BadRequest("The specified category does not exist.");
+        }
+
+        try
+        {
+            var novelId = await novelService.CreateNovelAsync(novelRequest);
+            return CreatedAtAction(nameof(CreateNovel), new { id = novelId }, novelRequest);
+        }
+        catch (Exception ex)
+        {
+            // Log the exception here
+            return StatusCode(500, "An error occurred while creating the novel. Please try again later.");
         }
     }
-    [HttpGet("Search")]
-    public async Task<ActionResult<IEnumerable<Novel>>> Search(string? title, string? author, int? publicationYear)
+    [Authorize]
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateNovel(int id, [FromBody] NovelCreateRequest novel)
     {
-        var novels = await novelService.SearchNovelsAsync(title, author, publicationYear);
-
-        if (novels == null || !novels.Any())
+        if (!ModelState.IsValid)
         {
-            return NotFound("No novels found matching the search criteria.");
+            return BadRequest(ModelState);
         }
 
-        return Ok(novels);
+        var result = await novelService.UpdateNovel(id, novel);
+        if (!result)
+        {
+            return NotFound($"Novel with ID {id} not found.");
+        }
+
+        return NoContent(); // Successfully updated
     }
 }

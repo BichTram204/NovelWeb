@@ -1,106 +1,137 @@
 ﻿using NovelReadingApplication.Models;
 using NovelReadingApplication.Services.Interfaces;
-using System.Data;
 using System.Data.SqlClient;
 
 namespace NovelReadingApplication.Services.Implementation
 {
-    public class NovelService: INovelService
+    public class NovelService : INovelService
     {
-        private DatabaseManager databaseManager;
+        private readonly DatabaseManager _dbManager;
 
-        public NovelService(DatabaseManager databaseManager)
+        public NovelService(DatabaseManager dbManager)
         {
-            this.databaseManager = databaseManager;
+            _dbManager = dbManager;
         }
 
-        public async Task<IEnumerable<Novel>> SearchNovelsAsync(string? title, string? author, int? publicationYear)
+        public async Task<IEnumerable<NovelResponse>> GetAllNovelsAsync()
         {
-            string sqlQuery = "SELECT * FROM Novels WHERE 1=1";
-            var parameters = new List<SqlParameter>();
+            var novels = new List<NovelResponse>();
+            var query = @"
+            SELECT n.NovelId, n.Title, n.Author, n.PublicationYear, n.Description, n.CoverImageUrl, c.Name AS CategoryName
+            FROM Novels n
+            LEFT JOIN Categories c ON n.CatId = c.CatId";
 
-            if (!string.IsNullOrWhiteSpace(title))
+            using (var reader = await _dbManager.ExecuteQueryAsync(query))
             {
-                sqlQuery += " AND Title LIKE @Title";
-                parameters.Add(new SqlParameter("@Title", $"%{title}%"));
-            }
-
-            if (!string.IsNullOrWhiteSpace(author))
-            {
-                sqlQuery += " AND Author LIKE @Author";
-                parameters.Add(new SqlParameter("@Author", $"%{author}%"));
-            }
-
-            if (publicationYear.HasValue)
-            {
-                sqlQuery += " AND PublicationYear = @PublicationYear";
-                parameters.Add(new SqlParameter("@PublicationYear", publicationYear));
-            }
-
-            DataTable dataTable = await databaseManager.ExecuteQueryAsync(sqlQuery, parameters);
-            var novels = new List<Novel>();
-
-            foreach (DataRow row in dataTable.Rows)
-            {
-                novels.Add(new Novel
+                while (await reader.ReadAsync())
                 {
-                    // Assuming your Novel class has properties that match the database columns
-                    // You'll need to adjust these property names and conversions based on your actual Novel class
-                    NovelId = Convert.ToInt32(row["NovelId"]),
-                    Title = row["Title"].ToString(),
-                    Author = row["Author"].ToString(),
-                    PublicationYear = Convert.ToInt32(row["PublicationYear"]),
-                    // Add other properties as needed
-                });
+                    novels.Add(new NovelResponse
+                    {
+                        NovelId = reader.GetInt32(reader.GetOrdinal("NovelId")),
+                        Title = reader.GetString(reader.GetOrdinal("Title")),
+                        Author = reader.IsDBNull(reader.GetOrdinal("Author")) ? null : reader.GetString(reader.GetOrdinal("Author")),
+                        PublicationYear = reader.IsDBNull(reader.GetOrdinal("PublicationYear")) ? null : reader.GetInt32(reader.GetOrdinal("PublicationYear")),
+                        Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
+                        CoverImageUrl = reader.IsDBNull(reader.GetOrdinal("CoverImageUrl")) ? null : reader.GetString(reader.GetOrdinal("CoverImageUrl")),
+                        CategoryName = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName"))
+                    });
+                }
+                reader.Close();
             }
 
             return novels;
         }
-        public async Task<bool> AddNovelAsync(Novel novel)
+        public async Task<IEnumerable<NovelResponse>> SearchNovelsAsync(string title, string author)
         {
-            // Check if all source IDs exist
-            string checkSourcesQuery = "SELECT COUNT(*) FROM Sources WHERE SourceId IN (@SourceIds)";
-            var parameters = new List<SqlParameter>
+            var novels = new List<NovelResponse>();
+            var query = @"
+        SELECT n.NovelId, n.Title, n.Author, n.PublicationYear, n.Description, n.CoverImageUrl, c.Name AS CategoryName
+        FROM Novels n
+        LEFT JOIN Categories c ON n.CatId = c.CatId
+        WHERE 1=1";
+
+            List<SqlParameter> parameters = new List<SqlParameter>();
+
+            if (!string.IsNullOrEmpty(title))
             {
-                new SqlParameter("@SourceIds", string.Join(",", novel.SourceIds))
-            };
-            var result = await databaseManager.ExecuteScalarAsync(checkSourcesQuery, parameters);
-            int count = Convert.ToInt32(result);
+                query += " AND n.Title LIKE @Title";
+                parameters.Add(new SqlParameter("@Title", $"%{title}%"));
+            }
 
-            if (count == novel.SourceIds.Count)
+            if (!string.IsNullOrEmpty(author))
             {
-                // All sources exist, proceed to add the novel
-                string insertNovelQuery = "INSERT INTO Novels (Title, Author, PublicationYear) VALUES (@Title, @Author, @PublicationYear)";
-                var insertParameters = new List<SqlParameter>
-                {
-                    new SqlParameter("@Title", novel.Title),
-                    new SqlParameter("@Author", novel.Author),
-                    new SqlParameter("@PublicationYear", novel.PublicationYear)
-                };
+                query += " AND n.Author LIKE @Author";
+                parameters.Add(new SqlParameter("@Author", $"%{author}%"));
+            }
 
-                await databaseManager.ExecuteNonQueryAsync(insertNovelQuery, insertParameters);
-
-                // Insert into junction table for Novel-Sources relationships
-                string insertJunctionQuery = "INSERT INTO NovelSources (NovelId, SourceId, Priority) VALUES (@NovelId, @SourceId, @Priority)";
-                foreach (int sourceId in novel.SourceIds)
+            using (var reader = await _dbManager.ExecuteQueryAsync(query, parameters.ToArray()))
+            {
+                while (await reader.ReadAsync())
                 {
-                    var junctionParameters = new List<SqlParameter>
+                    novels.Add(new NovelResponse
                     {
-                        new SqlParameter("@NovelId", novel.NovelId),
-                        new SqlParameter("@SourceId", sourceId),
-                        new SqlParameter("@Priority", 1)
-                    };
-
-                    await databaseManager.ExecuteNonQueryAsync(insertJunctionQuery, junctionParameters);
+                        NovelId = reader.GetInt32(reader.GetOrdinal("NovelId")),
+                        Title = reader.GetString(reader.GetOrdinal("Title")),
+                        Author = reader.GetString(reader.GetOrdinal("Author")),
+                        PublicationYear = reader.IsDBNull(reader.GetOrdinal("PublicationYear")) ? null : (int?)reader.GetInt32(reader.GetOrdinal("PublicationYear")),
+                        Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description")),
+                        CoverImageUrl = reader.IsDBNull(reader.GetOrdinal("CoverImageUrl")) ? null : reader.GetString(reader.GetOrdinal("CoverImageUrl")),
+                        CategoryName = reader.IsDBNull(reader.GetOrdinal("CategoryName")) ? null : reader.GetString(reader.GetOrdinal("CategoryName"))
+                    });
                 }
+            }
 
-                return true;
-            }
-            else
+            return novels;
+        }
+        public async Task<bool> CategoryExistsAsync(int catId)
+        {
+            var query = "SELECT COUNT(1) FROM Categories WHERE CatId = @CatId";
+            SqlParameter[] parameters = new SqlParameter[]
             {
-                // Not all sources exist
-                return false;
+        new SqlParameter("@CatId", catId),
+            };
+
+            var result = await _dbManager.ExecuteScalarAsync(query, parameters);
+            int count = Convert.ToInt32(result);
+            return count > 0;
+        }
+        public async Task<int> CreateNovelAsync(NovelCreateRequest novel)
+        {
+            if (!await CategoryExistsAsync(novel.CatId))
+            {
+                throw new ArgumentException("Category does not exist.");
             }
+            var query = "INSERT INTO Novels (Title, Author, PublicationYear, Description, CoverImageUrl, CatId) VALUES (@Title, @Author, @PublicationYear, @Description, @CoverImageUrl, @CatId); SELECT SCOPE_IDENTITY();";
+            SqlParameter[] parameters = new SqlParameter[]
+            {
+        new SqlParameter("@Title", novel.Title),
+        new SqlParameter("@Author", novel.Author ?? (object)DBNull.Value),
+        new SqlParameter("@PublicationYear", novel.PublicationYear.HasValue ? (object)novel.PublicationYear.Value : DBNull.Value),
+        new SqlParameter("@Description", novel.Description ?? (object)DBNull.Value),
+        new SqlParameter("@CoverImageUrl", novel.CoverImageUrl ?? (object)DBNull.Value),
+        new SqlParameter("@CatId", novel.CatId),
+            };
+
+            var result = await _dbManager.ExecuteScalarAsync(query, parameters);
+            return Convert.ToInt32(result);
+        }
+        public async Task<bool> UpdateNovel(int novelId, NovelCreateRequest novel)
+        {
+            var query = "UPDATE Novels SET Title = @Title, Author = @Author, PublicationYear = @PublicationYear, Description = @Description, CoverImageUrl = @CoverImageUrl, CatId = @CatId WHERE NovelId = @NovelId";
+
+            SqlParameter[] parameters = new[]
+            {
+            new SqlParameter("@Title", novel.Title),
+            new SqlParameter("@Author", novel.Author),
+            new SqlParameter("@PublicationYear", novel.PublicationYear),
+            new SqlParameter("@Description", novel.Description),
+            new SqlParameter("@CoverImageUrl", novel.CoverImageUrl),
+            new SqlParameter("@CatId", novel.CatId),
+            new SqlParameter("@NovelId", novelId)
+        };
+
+            var result = await _dbManager.ExecuteNonQueryAsync(query, parameters);
+            return result > 0;
         }
     }
 }

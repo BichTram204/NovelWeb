@@ -1,5 +1,4 @@
 ﻿using Microsoft.IdentityModel.Tokens;
-using NovelReadingApplication.Models;
 using NovelReadingApplication.Services.Interfaces;
 using System.Data;
 using System.Data.SqlClient;
@@ -29,11 +28,16 @@ namespace NovelReadingApplication.Services.Implementation
         new SqlParameter("@Username", username),
         new SqlParameter("@Password", password) // Consider hashing the password
     };
-            DataTable result = await _databaseManager.ExecuteQueryAsync(query, parameters);
+
+            DataTable result = new DataTable();
+            using (var reader = await _databaseManager.ExecuteQueryAsync(query, parameters.ToArray()))
+            {
+                result.Load(reader);
+            }
 
             if (result.Rows.Count == 0)
             {
-                return null; // User not found or password does not match
+                return "Authentication failed";// User not found or password does not match
             }
 
             var secretKeyConfig = _configuration["JwtConfig:SecretKey"] ?? throw new InvalidOperationException("Secret key not configured");
