@@ -4,9 +4,10 @@ namespace NovelReadingApplication.Services.Interfaces
 {
     public interface INovelService
     {
-        //List<Novel> GetAllNovels();
-        //void AddNovel(Novel novel);
-        Task<bool> AddNovelAsync(Novel novel);
-        Task<IEnumerable<Novel>> SearchNovelsAsync(string? title, string? author, int? publicationYear);
+        Task<IEnumerable<NovelResponse>> GetAllNovelsAsync();
+        Task<IEnumerable<NovelResponse>> SearchNovelsAsync(string title, string author);
+        Task<bool> CategoryExistsAsync(int catId);
+        Task<int> CreateNovelAsync(NovelCreateRequest novel);
+        Task<bool> UpdateNovel(int novelId, NovelCreateRequest novel);
     }
 }

@@ -4,59 +4,58 @@ using System.Data.SqlClient;
 
 namespace NovelReadingApplication.Services.Implementation
 {
-    public class SourceService : ISourceService
+    public class CategoryService : ICategoryService
     {
         private readonly DatabaseManager _dbManager;
 
-        public SourceService(DatabaseManager dbManager)
+        public CategoryService(DatabaseManager dbManager)
         {
             _dbManager = dbManager;
         }
-        public async Task<IEnumerable<Source>> GetAllSourcesAsync()
+
+        public async Task<IEnumerable<Category>> GetAllCategoriesAsync()
         {
-            var sources = new List<Source>();
-            var query = "SELECT SourceId, Name, Url, Description FROM Sources";
+            var categories = new List<Category>();
+            var query = "SELECT CatId, Name, Description FROM Categories";
 
             using (var reader = await _dbManager.ExecuteQueryAsync(query))
             {
                 while (await reader.ReadAsync())
                 {
-                    sources.Add(new Source
+                    categories.Add(new Category
                     {
-                        SourceId = reader.GetInt32(reader.GetOrdinal("SourceId")),
+                        CatId = reader.GetInt32(reader.GetOrdinal("CatId")),
                         Name = reader.GetString(reader.GetOrdinal("Name")),
-                        Url = reader.GetString(reader.GetOrdinal("Url")),
                         Description = reader.IsDBNull(reader.GetOrdinal("Description")) ? null : reader.GetString(reader.GetOrdinal("Description"))
                     });
                 }
                 reader.Close();
             }
 
-            return sources;
+            return categories;
         }
-        public async Task<int> CreateSourceAsync(SourceCreateRequest source)
+
+        public async Task<int> CreateCategoryAsync(CategoryCreateRequest source)
         {
-            var query = "INSERT INTO Sources (Name, Description, Url) VALUES (@Name, @Description, @Url); SELECT SCOPE_IDENTITY();";
+            var query = "INSERT INTO Categories (Name, Description) VALUES (@Name, @Description); SELECT SCOPE_IDENTITY();";
             SqlParameter[] parameters = new SqlParameter[]
             {
             new SqlParameter("@Name", source.Name),
             new SqlParameter("@Description", source.Description ?? (object)DBNull.Value),
-            new SqlParameter("@Url", source.Url ?? (object)DBNull.Value),
             };
 
             var result = await _dbManager.ExecuteScalarAsync(query, parameters);
             return Convert.ToInt32(result);
         }
-        public async Task<bool> UpdateSource(int sourceId, SourceCreateRequest source)
+        public async Task<bool> UpdateCategory(int catId, CategoryCreateRequest category)
         {
-            var query = "UPDATE Sources SET Name = @Name, Url = @Url Description = @Description WHERE SourceId = @SourceId";
+            var query = "UPDATE Categories SET Name = @Name, Description = @Description WHERE CatId = @CatId";
 
             SqlParameter[] parameters = new[]
             {
-            new SqlParameter("@Name", source.Name),
-            new SqlParameter("@Url", source.Url),
-            new SqlParameter("@Description", source.Description),
-            new SqlParameter("@SourceId", sourceId)
+            new SqlParameter("@Name", category.Name),
+            new SqlParameter("@Description", category.Description),
+            new SqlParameter("@CatId", catId)
         };
 
             var result = await _dbManager.ExecuteNonQueryAsync(query, parameters);

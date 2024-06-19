@@ -1,6 +1,7 @@
 ﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using NovelReadingApplication.Models;
@@ -11,34 +12,37 @@ using System.Text;
 
 namespace NovelReadingApplication.Controllers
 {
-    
+
     [Route("api/[controller]")]
     [ApiController]
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
-        private readonly ILogger<AuthController> _logger;
+        private readonly IConfiguration _configuration;
 
-        public AuthController(IAuthService authService, ILogger<AuthController> logger)
+        public AuthController(IAuthService authService, IConfiguration configuration)
         {
             _authService = authService;
-            _logger = logger;
+            _configuration = configuration;
         }
-        [AllowAnonymous]
         [HttpPost("signin")]
-        public async Task<IActionResult> SignIn([FromBody] LoginModel login)
+        public async Task<IActionResult> SignIn([FromBody] LoginModel data)
         {
-            _logger.LogInformation($"SignIn attempt for username: {login.Password}");
-            var token = await _authService.SignInAsync(login.Username, login.Password);
+            var token = await _authService.SignInAsync(data.Username, data.Password);
 
-            if (token != null)
+            if (token == "Authentication failed")
             {
-                return Ok(new { Token = token });
+                return Unauthorized("Invalid username or password.");
             }
 
-            return Unauthorized();
-        }
+            double expirationMinutes = _configuration.GetValue<double>("JwtConfig:ClientTokensExpiredInMinute:AccessToken");
+            DateTime expirationTime = DateTime.UtcNow.AddMinutes(expirationMinutes);
 
-        // Add other authentication-related actions as needed
+            return Ok(new
+            {
+                AccessToken = token,
+                Expires = expirationTime
+            });
+        }
     }
 }

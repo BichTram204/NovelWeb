@@ -6,7 +6,7 @@ using NovelReadingApplication.Services.Interfaces;
 
 namespace NovelReadingApplication.Controllers
 {
-
+    [Authorize]
     [ApiController]
     [Route("[controller]")]
     public class UsersController : ControllerBase
@@ -16,17 +16,6 @@ namespace NovelReadingApplication.Controllers
         public UsersController(IUserService userService)
         {
             _userService = userService;
-        }
-
-        [HttpGet("{userId}")]
-        public async Task<IActionResult> GetUserProfile(int userId)
-        {
-            var user = await _userService.GetUserByIdAsync(userId);
-            if (user == null)
-            {
-                return NotFound();
-            }
-            return Ok(user);
         }
     }
 }
